@@ -11,13 +11,15 @@ const app = express();
 const server = http.createServer(app); // Use this to attach socket.io
 const io = socketIo(server, {
   cors: {
-    origin: "*",
+    origin: "https://videochatfront-liard.vercel.app",
     methods: ["GET", "POST"]
   }
 });
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: "https://videochatfront-liard.vercel.app"
+}));
 app.use(express.json());
 
 // Connect to MongoDB
@@ -216,5 +218,6 @@ io.on('connection', (socket) => {
 // Start server (✅ use `server.listen`, not `app.listen`)
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on http://192.168.1.10:${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
+
 });
