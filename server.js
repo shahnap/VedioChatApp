@@ -154,19 +154,78 @@ app.get('/api/messages/:sender/:receiver', async (req, res) => {
 });
 
 // Socket.io connection
+// WebRTC Signaling handlers
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
+  // User joins their own room
   socket.on('join', (username) => {
     if (username) {
       socket.join(username);
-      activeUsers.set(socket.id, username);
-      console.log(`${username} joined their room (socket ${socket.id})`);
-      
-      // Let everyone know this user is online
-      io.emit('user-online', username);
+      console.log(`${username} joined room`);
     }
   });
+
+  // Handle call initiation
+  socket.on('call-user', (data) => {
+    console.log(`Call from ${data.from} to ${data.to}`);
+    io.to(data.to).emit('call-made', {
+      offer: data.offer,
+      from: data.from
+    });
+  });
+
+  // Handle call answer
+  socket.on('make-answer', (data) => {
+    console.log(`Answer from ${data.from} to ${data.to}`);
+    io.to(data.to).emit('answer-made', {
+      answer: data.answer,
+      from: data.from
+    });
+  });
+
+  // Handle ICE candidates
+  socket.on('ice-candidate', (data) => {
+    console.log(`ICE candidate from ${data.from} to ${data.to}`);
+    io.to(data.to).emit('ice-candidate', {
+      candidate: data.candidate,
+      from: data.from
+    });
+  });
+
+  // Handle call rejection
+  socket.on('reject-call', (data) => {
+    console.log(`Call rejected: ${data.from} to ${data.to}`);
+    io.to(data.to).emit('call-rejected', {
+      from: data.from
+    });
+  });
+
+  // Handle call ending
+  socket.on('end-call', (data) => {
+    console.log(`Call ended: ${data.from} to ${data.to}`);
+    io.to(data.to).emit('call-ended', {
+      from: data.from
+    });
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+
+// io.on('connection', (socket) => {
+//   console.log('Client connected:', socket.id);
+
+//   socket.on('join', (username) => {
+//     if (username) {
+//       socket.join(username);
+//       activeUsers.set(socket.id, username);
+//       console.log(`${username} joined their room (socket ${socket.id})`);
+      
+//       // Let everyone know this user is online
+//       io.emit('user-online', username);
+//     }
+//   });
 
   socket.on('sendMessage', async (data) => {
     try {
@@ -211,21 +270,21 @@ io.on('connection', (socket) => {
   });
 
   // WebRTC Signaling
-  socket.on('call-user', (data) => {
-    console.log(`Call from ${data.from} to ${data.to}`);
-    io.to(data.to).emit('call-made', {
-      offer: data.offer,
-      from: data.from
-    });
-  });
+  // socket.on('call-user', (data) => {
+  //   console.log(`Call from ${data.from} to ${data.to}`);
+  //   io.to(data.to).emit('call-made', {
+  //     offer: data.offer,
+  //     from: data.from
+  //   });
+  // });
 
-  socket.on('make-answer', (data) => {
-    console.log(`Answer from ${data.from} to ${data.to}`);
-    io.to(data.to).emit('answer-made', {
-      answer: data.answer,
-      from: data.from
-    });
-  });
+  // socket.on('make-answer', (data) => {
+  //   console.log(`Answer from ${data.from} to ${data.to}`);
+  //   io.to(data.to).emit('answer-made', {
+  //     answer: data.answer,
+  //     from: data.from
+  //   });
+  // });
 
   socket.on('ice-candidate', (data) => {
     console.log(`ICE candidate from ${data.from} to ${data.to}`);
@@ -235,31 +294,31 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('reject-call', (data) => {
-    console.log(`Call rejected: ${data.from} to ${data.to}`);
-    io.to(data.to).emit('call-rejected', { 
-      from: data.from,
-      reason: data.reason || 'Call rejected by user'
-    });
-  });
+  // socket.on('reject-call', (data) => {
+  //   console.log(`Call rejected: ${data.from} to ${data.to}`);
+  //   io.to(data.to).emit('call-rejected', { 
+  //     from: data.from,
+  //     reason: data.reason || 'Call rejected by user'
+  //   });
+  // });
 
-  socket.on('end-call', (data) => {
-    console.log(`Call ended: ${data.from} to ${data.to}`);
-    io.to(data.to).emit('call-ended', { 
-      from: data.from 
-    });
-  });
+  // socket.on('end-call', (data) => {
+  //   console.log(`Call ended: ${data.from} to ${data.to}`);
+  //   io.to(data.to).emit('call-ended', { 
+  //     from: data.from 
+  //   });
+  // });
 
-  socket.on('disconnect', () => {
-    const username = activeUsers.get(socket.id);
-    console.log(`Client disconnected: ${socket.id}${username ? ` (${username})` : ''}`);
+  // socket.on('disconnect', () => {
+  //   const username = activeUsers.get(socket.id);
+  //   console.log(`Client disconnected: ${socket.id}${username ? ` (${username})` : ''}`);
     
-    if (username) {
-      activeUsers.delete(socket.id);
-      // Let everyone know this user is offline
-      io.emit('user-offline', username);
-    }
-  });
+  //   if (username) {
+  //     activeUsers.delete(socket.id);
+  //     // Let everyone know this user is offline
+  //     io.emit('user-offline', username);
+  //   }
+  // });
 });
 
 // Add a simple health check endpoint
