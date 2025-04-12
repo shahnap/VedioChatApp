@@ -8,17 +8,27 @@ const jwt = require('jsonwebtoken');
 
 // Initialize Express app
 const app = express();
-const server = http.createServer(app); // Use this to attach socket.io
+const server = http.createServer(app);
+// Uncomment the appropriate URL based on your environment
+// const FrontUrl = 'https://videochatfront-liard.vercel.app'; // Production
+const FrontUrl = 'http://localhost:5173'; // Development
+
+// Improved Socket.IO setup with better connection options
 const io = socketIo(server, {
   cors: {
-    origin: "https://videochatfront-liard.vercel.app",
-    methods: ["GET", "POST"]
-  }
+    origin: [FrontUrl, 'https://videochatfront-liard.vercel.app'],
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling'], // Support fallback
+  pingTimeout: 60000, // Longer timeout for video calls
+  pingInterval: 25000 // More frequent ping to keep connection alive
 });
 
 // Middleware
 app.use(cors({
-  origin: "https://videochatfront-liard.vercel.app"
+  origin: [FrontUrl, 'https://videochatfront-liard.vercel.app'],
+  credentials: true
 }));
 app.use(express.json());
 
@@ -52,6 +62,8 @@ const Message = mongoose.model('Message', messageSchema);
 // JWT secret
 const JWT_SECRET = 'your_jwt_secret_key';
 
+// Socket.io connections map
+const activeUsers = new Map();
 // User registration
 app.post('/api/register', async (req, res) => {
   try {
@@ -83,9 +95,16 @@ app.post('/api/register', async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
+// Add this to your main server file (e.g., main.js or index.js)
+
+app.get('/ping', (req, res) => {
+  res.status(200).send('Server is running ✅');
+});
 
 // User login
 app.post('/api/login', async (req, res) => {
+  console.log("login clicked");
+  
   try {
     const { username, password } = req.body;
     const user = await User.findOne({ username });
@@ -136,19 +155,28 @@ app.get('/api/messages/:sender/:receiver', async (req, res) => {
 
 // Socket.io connection
 io.on('connection', (socket) => {
-  console.log('New client connected:', socket.id);
+  console.log('Client connected:', socket.id);
 
   socket.on('join', (username) => {
-    socket.join(username);
-    console.log(`${username} joined their room`);
+    if (username) {
+      socket.join(username);
+      activeUsers.set(socket.id, username);
+      console.log(`${username} joined their room (socket ${socket.id})`);
+      
+      // Let everyone know this user is online
+      io.emit('user-online', username);
+    }
   });
 
   socket.on('sendMessage', async (data) => {
     try {
       const { sender, receiver, content } = data;
+      console.log(`Message from ${sender} to ${receiver}: ${content.substring(0, 20)}...`);
+      
       const message = new Message({ sender, receiver, content });
       await message.save();
 
+      // Send to receiver
       io.to(receiver).emit('receiveMessage', {
         _id: message._id,
         sender,
@@ -158,6 +186,7 @@ io.on('connection', (socket) => {
         isRead: false
       });
 
+      // Confirm to sender
       socket.emit('messageSent', {
         _id: message._id,
         sender,
@@ -181,7 +210,9 @@ io.on('connection', (socket) => {
     }
   });
 
+  // WebRTC Signaling
   socket.on('call-user', (data) => {
+    console.log(`Call from ${data.from} to ${data.to}`);
     io.to(data.to).emit('call-made', {
       offer: data.offer,
       from: data.from
@@ -189,6 +220,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('make-answer', (data) => {
+    console.log(`Answer from ${data.from} to ${data.to}`);
     io.to(data.to).emit('answer-made', {
       answer: data.answer,
       from: data.from
@@ -196,6 +228,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('ice-candidate', (data) => {
+    console.log(`ICE candidate from ${data.from} to ${data.to}`);
     io.to(data.to).emit('ice-candidate', {
       candidate: data.candidate,
       from: data.from
@@ -203,21 +236,39 @@ io.on('connection', (socket) => {
   });
 
   socket.on('reject-call', (data) => {
-    io.to(data.to).emit('call-rejected', { from: data.from });
+    console.log(`Call rejected: ${data.from} to ${data.to}`);
+    io.to(data.to).emit('call-rejected', { 
+      from: data.from,
+      reason: data.reason || 'Call rejected by user'
+    });
   });
 
   socket.on('end-call', (data) => {
-    io.to(data.to).emit('call-ended', { from: data.from });
+    console.log(`Call ended: ${data.from} to ${data.to}`);
+    io.to(data.to).emit('call-ended', { 
+      from: data.from 
+    });
   });
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    const username = activeUsers.get(socket.id);
+    console.log(`Client disconnected: ${socket.id}${username ? ` (${username})` : ''}`);
+    
+    if (username) {
+      activeUsers.delete(socket.id);
+      // Let everyone know this user is offline
+      io.emit('user-offline', username);
+    }
   });
 });
 
-// Start server (✅ use `server.listen`, not `app.listen`)
+// Add a simple health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
+});
+
+// Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
-
 });
