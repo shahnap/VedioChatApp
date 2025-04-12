@@ -154,7 +154,7 @@ app.get('/api/messages/:sender/:receiver', async (req, res) => {
 });
 
 // Socket.io connection
-// WebRTC Signaling handlers
+// WebRTC Signaling handlers// WebRTC Signaling handlers
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
@@ -208,6 +208,9 @@ io.on('connection', (socket) => {
       from: data.from
     });
   });
+
+  // ... rest of your existing handlers ...
+
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
